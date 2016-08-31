@@ -170,28 +170,29 @@
                 if( this.input && this.input.leftController && this.input.leftController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
                     grabHand = this.input.leftController;
                 else if( this.input && this.input.rightController && this.input.rightController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
-                    grabHand = input.rightController;
+                    grabHand = this.input.rightController;
                 else
                     grabHand = null;
 
                 // check if user is grabbing the hat
-                var inputPos, inputQuat;
-                var bounds = new THREE.Box3().setFromObject(this.object3d);
-                if(grabHand && bounds.containsPoint( inputPos = new THREE.Vector3().copy(grabHand.position) ))
+                if(grabHand)
                 {
-                    inputQuat = new THREE.Quaternion().copy(grabHand.rotation);
+                    var inputPos = new THREE.Vector3().copy(grabHand.position);
+                    var inputQuat = new THREE.Quaternion().copy(grabHand.rotation);
 
                     // update controller position
                     this.inputMat.compose(inputPos, inputQuat, new THREE.Vector3(1,1,1));
 
                     // grab
-                    if(!this.grabbing)
+                    var bounds = new THREE.Box3().setFromObject(this.object3d);
+                    if(!this.grabbing && bounds.containsPoint(inputPos))
                     {
                         this.grabbing = true;
-
+console.log('grab', this.joint);
                         // translate hat position/rotation from head space to hand space
+                        this.joint.updateMatrixWorld();
                         var handInverse = new THREE.Matrix4().getInverse(this.inputMat);
-                        this.offsetMat.multiply(this.joint.matrix).multiply(handInverse);
+                        this.offsetMat = handInverse.multiply(this.joint.matrixWorld).multiply(this.offsetMat);
                     }
                 }
 
@@ -199,10 +200,11 @@
                 else if(this.grabbing)
                 {
                     this.grabbing = false;
-
+console.log('release');
                     // translate hat position/rotation from controller space back to head space
-                    var headInverse = new THREE.Matrix4().getInverse(this.joint.matrix);
-                    this.offsetMat.multiply(this.inputMat).multiply(headInverse);
+                    this.joint.updateMatrixWorld();
+                    var headInverse = new THREE.Matrix4().getInverse(this.joint.matrixWorld);
+                    this.offsetMat = headInverse.multiply(this.inputMat).multiply(this.offsetMat);
                 }
 
 
@@ -212,11 +214,11 @@
                 if(this.grabbing)
                     var mat = this.inputMat.clone();
                 else
-                    var mat = this.joint.matrix.clone();
+                    var mat = this.joint.matrixWorld.clone();
 
                 // offset
                 mat.multiply(this.offsetMat);
-                
+
                 // scale
                 mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
 
