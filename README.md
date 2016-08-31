@@ -1,7 +1,7 @@
 # AltspaceVR SDK Tutorial
 ## Part *n*: Adjusting Your Hat
 
-In the last section, we went through the process of creating hats that the user could wear, and were synchronized to everyone else in the room. Our implementation had a couple problems though:
+In the last section, we went through the process of creating hats that the user could wear, and that were synchronized to everyone else in the room. Our implementation had a couple problems though:
 
 1. The hat default offsets are one-size-fits-all, and don't take into account different avatars' heads. This often results in the hat clipping through a user's head, or worse, obscuring his vision. This could be done better.
 
@@ -30,14 +30,14 @@ sim.scene.addBehavior(steamInput);
 
 Note the `false` value that's passed into the `SteamVRInputBehavior`. This tells the system to still allow cursor events from the controllers instead of blocking them, which is the default.
 
-We now have Vive wand tracking available to our app! Now let's take advantage of that.
+We now have Vive wand tracking available to our app! Let's take advantage of that.
 
 
 ### Cleaning Up The Follow Behavior
 
-Calling the `FollowBehavior` function currently returns a new behavior that you're to add to the hat. This is what's called a "factory function", because the function builds new objects and returns them, instead of being the object itself which is more common in the object-oriented model. And while this factory model works in this case, the behavior as-written wouldn't work if there were more than one in the scene. So for best practices' sake, we're going to change this behavior to follow the OO pattern.
+Calling the `FollowBehavior` function currently returns a new behavior that you're to add to the hat. This is what's called a "factory function", because the function builds new objects and returns them, instead of being the object itself, which is more common in the object-oriented model. And while the factory model works in this case, the behavior wouldn't work as written if there were more than one object in the scene with the behavior. So for best practices' sake, we're going to change this behavior to follow the OO pattern.
 
-Rename the function to `FollowGrabBehavior`, and make all the variables declared at the top there into instance variables by assigning them to `this`.
+Rename the function to `FollowGrabBehavior`, and make all the variables declared at the top into instance variables by assigning them to the `this` object.
 
 ```javascript
 function FollowGrabBehavior(config)
@@ -73,25 +73,30 @@ Great, the behavior has been updated! Now just change the invocation to match in
 obj.addBehavior( new FollowGrabBehavior({offset: offset, joint: head}) );
 ```
 
-Now let's really get to the fun part!
+Now let's get to the fun part!
 
 
 ### Detecting Grab Events
 
-The basic idea here is to check the controller status every so often, and see if the button state (pressed or not pressed) has changed. When the button becomes pressed, we're gonna lock the hat to the user's hand instead of his head, until they release the button. To do this, we need to add three new instance variables to the behavior's constructor. These will help us maintain an accurate picture of what the controller is doing over multiple updates.
+The basic idea here is to check the controller status every so often, and see if the button state (pressed or not pressed) has changed. When the button becomes pressed, we're gonna lock the hat to the user's hand instead of his head, until they release the button. To do this, we need to add three new instance variables to the behavior's constructor function. These will help us maintain an accurate picture of what the controller is doing over multiple updates.
 
 ```javascript
-// stores the button state as of last check
-this.grabbing = false;
+function FollowGrabBehavior(config)
+{
+    ...
 
-// stores the position and orientation of the controller as of last check
-this.inputMat = new THREE.Matrix4();
-
-// a reference to the global SteamVRInput behavior
-this.input = sim.scene.getBehaviorByType('SteamVRInput');
+    // stores the button state as of last check
+    this.grabbing = false;
+    
+    // stores the position and orientation of the controller as of last check
+    this.inputMat = new THREE.Matrix4();
+    
+    // a reference to the global SteamVRInput behavior
+    this.input = sim.scene.getBehaviorByType('SteamVRInput');
+}
 ```
 
-We're also going to rename our old variable `offset` to something more descriptive, and convert into a format that's more useful:
+We're also going to rename our old variable `offset` to something more descriptive, and convert into a format that's more useful. You'll see how this will work momentarily.
 
 ```javascript
 this.offsetMat = new THREE.Matrix4().setPosition(config.offset);
@@ -128,7 +133,7 @@ if(grabHand && bounds.containsPoint( inputPos = new THREE.Vector3().copy(grabHan
 
 After computing the bounding box using the `THREE.Box3` class, we check that the grip is being pressed, and if so, we see if the controller's position is contained inside the bounds of the hat. And since we'll need that position value again later, we save it to the `inputPos` variable.
 
-If the user is indeed grabbing the hat, the first thing we want to do is update the controller position and orientation.
+If the user is indeed grabbing the hat, the first thing we want to do is update our copy of the controller's position and orientation.
 
 ```javascript
 if(...)
@@ -157,7 +162,7 @@ if(!this.grabbing)
 }
 ```
 
-This is the same technique that's used by Three.js to implement the scene hierarchy, so this code is equivalent to changing the hat's "parent" from the head to the controller. We're not doing that though, so that we don't have to keep different scene hierarchies for local and remote versions of the hat.
+This is the same technique that's used by Three.js to implement the scene hierarchy, so this code is equivalent to changing the hat's "parent" from the head to the controller. We're not doing that so we don't have to keep different scene hierarchies for local and remote versions of the hat, but it could have been implemented that way.
 
 We now know when the user starts grabbing the hat, but we still need to figure out when they let go. In this case, a release is when the grip button is no longer pressed, but was pressed last frame. When this happens, we need to convert the hat's transform back to being relative to the user's head. We do that by performing the opposite operation as before:
 
@@ -175,7 +180,7 @@ else if(this.grabbing)
 }
 ```
 
-This is all we need to do for detecting the grab, good job! We know when the user grabs and when she lets go, and perform the necessary operations to change the hat's anchor. But how do we use all this to actually position the hat? Read on!
+This is all we need to do to detect the grab, good job! We know when the user grabs and when she lets go, and perform the necessary operations to change the hat's anchor. But how do we use all this to reposition the hat? Read on!
 
 
 ### Placing The Hat
@@ -197,14 +202,14 @@ mat.multiply(this.offsetMat);
 mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
 ```
 
-Finally, we set the hat's transform to this new matrix that we've computed, and update its other properties based on this matrix:
+Finally, we set the hat's transform to this new matrix that we've computed, and update its other properties to match:
 
 ```javascript
 this.object3d.matrix.copy(mat);
 this.object3d.matrix.decompose(this.object3d.position, this.object3d.quaternion, this.object3d.scale);
 ```
 
-And that's it! We're done! The hat will follow the user's head unless it is being repositioned with the controller.
+And that's it! We're done! The hat will follow the user's head unless it is being repositioned with the controller, in which case it'll follow the controller.
 
 
 ### Conclusion
