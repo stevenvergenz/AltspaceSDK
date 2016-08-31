@@ -91,6 +91,12 @@ this.inputMat = new THREE.Matrix4();
 this.input = sim.scene.getBehaviorByType('SteamVRInput');
 ```
 
+We're also going to rename our old variable `offset` to something more descriptive, and convert into a format that's more useful:
+
+```javascript
+this.offsetMat = new THREE.Matrix4().setPosition(config.offset);
+```
+
 Now let's go back down to the `update` function, and poll the controller for its state.
 
 ```javascript
@@ -139,7 +145,7 @@ if(...)
 
 The math here can be hard to follow, but here's the bottom line: a quaternion is a structure that describes a rotation, or in this case an orientation. We combine that with the controller position that we stored before, and a scale of 1, to get the full "transform" of the controller. This transform is everything we need to know about the controller in the 3d space.
 
-Once we've done that, we compare the grab state this frame with the grab state last time we checked to determine if the user has only just now grabbed it. If that's the case, we convert the hat's transform relative to the user's head into a transform relative to the controller.
+Once we've updated the controller transform, we compare the grab state this frame with the grab state last time we checked to determine if the user has only just now grabbed it. If that's the case, we convert the hat's transform relative to the user's head into a transform relative to the controller.
 
 ```javascript
 if(!this.grabbing)
@@ -151,4 +157,139 @@ if(!this.grabbing)
 }
 ```
 
+This is the same technique that's used by Three.js to implement the scene hierarchy, so this code is equivalent to changing the hat's "parent" from the head to the controller. We're not doing that though, so that we don't have to keep different scene hierarchies for local and remote versions of the hat.
 
+We now know when the user starts grabbing the hat, but we still need to figure out when they let go. In this case, a release is when the grip button is no longer pressed, but was pressed last frame. When this happens, we need to convert the hat's transform back to being relative to the user's head. We do that by performing the opposite operation as before:
+
+```javascript
+if( /* grabHand && hand on hat */ ){
+    ...
+}
+else if(this.grabbing)
+{
+    this.grabbing = false;
+    
+    // translate hat position/rotation from controller space back to head space
+    var headInverse = new THREE.Matrix4().getInverse(this.joint.matrix);
+    this.offsetMat.multiply(this.inputMat).multiply(headInverse);
+}
+```
+
+This is all we need to do for detecting the grab, good job! We know when the user grabs and when she lets go, and perform the necessary operations to change the hat's anchor. But how do we use all this to actually position the hat? Read on!
+
+
+### Placing The Hat
+
+There's been a lot of matrix math up to this point, and this is where it all pays off. First, we determine if the hat should be anchored to the user's head or controller. Note the `.clone()` on each matrix. We do this because those matrixes are used on subsequent checks to the controller, and we don't want to mess them up.
+
+```javascript
+// position hat relative to head, or hand if grabbing
+if(this.grabbing)
+    var mat = this.inputMat.clone();
+else
+    var mat = this.joint.matrix.clone();
+```
+
+Once we know where the hat is anchored, we apply our previously computed offset. We also add the scale factor that we obtained from the call to `altspace.getEnclosure()` in the last lesson to make the hat its proper size:
+
+```javascript
+mat.multiply(this.offsetMat);
+mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
+```
+
+Finally, we set the hat's transform to this new matrix that we've computed, and update its other properties based on this matrix:
+
+```javascript
+this.object3d.matrix.copy(mat);
+this.object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
+```
+
+And that's it! We're done! The hat will follow the user's head unless it is being repositioned with the controller.
+
+
+### Conclusion
+
+
+
+## Appendix A: Full Source Code
+
+```javascript
+function FollowGrabBehavior(config)
+{
+    this.offsetMat = new THREE.Matrix4().setPosition(config.offset);
+    this.joint = config.joint;
+    this.grabbing = false;
+    this.inputMat = new THREE.Matrix4();
+
+    this.object3d = null;
+    this.input = sim.scene.getBehaviorByType('SteamVRInput');
+}
+
+FollowGrabBehavior.prototype.awake = function(o)
+{
+    this.object3d = o;
+}
+
+FollowGrabBehavior.prototype.update = function()
+{
+    // check if user is grabbing something
+    var grabHand;
+    if( this.input && this.input.leftController && this.input.leftController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
+        grabHand = this.input.leftController;
+    else if( this.input && this.input.rightController && this.input.rightController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
+        grabHand = input.rightController;
+    else
+        grabHand = null;
+
+    // check if user is grabbing the hat
+    var inputPos, inputQuat;
+    var bounds = new THREE.Box3().setFromObject(this.object3d);
+    if(grabHand && bounds.containsPoint( inputPos = new THREE.Vector3().copy(grabHand.position) ))
+    {
+        inputQuat = new THREE.Quaternion().copy(grabHand.rotation);
+
+        // update controller position
+        this.inputMat.compose(inputPos, inputQuat, new THREE.Vector3(1,1,1));
+
+        // grab
+        if(!this.grabbing)
+        {
+            this.grabbing = true;
+
+            // translate hat position/rotation from head space to hand space
+            var handInverse = new THREE.Matrix4().getInverse(this.inputMat);
+            this.offsetMat.multiply(this.joint.matrix).multiply(handInverse);
+        }
+    }
+
+    // release
+    else if(this.grabbing)
+    {
+        this.grabbing = false;
+
+        // translate hat position/rotation from controller space back to head space
+        var headInverse = new THREE.Matrix4().getInverse(this.joint.matrix);
+        this.offsetMat.multiply(this.inputMat).multiply(headInverse);
+    }
+
+
+    //No need to take ownership of this hat, since we created it.
+
+    // position hat relative to head, or hand if grabbing
+    if(this.grabbing)
+        var mat = this.inputMat.clone();
+    else
+        var mat = this.joint.matrix.clone();
+
+    // offset
+    mat.multiply(this.offsetMat);
+
+    // scale
+    mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
+
+    // apply
+    this.object3d.matrix.copy(mat);
+    this.object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
+}
+
+```
