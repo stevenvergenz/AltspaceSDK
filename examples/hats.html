@@ -154,15 +154,13 @@
                 this.grabbing = false;
                 this.inputMat = new THREE.Matrix4();
 
-                this.object3d;
-                this.sync = null;
+                this.object3d = null;
                 this.input = sim.scene.getBehaviorByType('SteamVRInput');
             }
 
             FollowGrabBehavior.prototype.awake = function(o)
             {
                 this.object3d = o;
-                this.sync = object3d.getBehaviorByType('Object3DSync');
             }
 
             FollowGrabBehavior.prototype.update = function()
@@ -189,7 +187,6 @@
                     // grab
                     if(!this.grabbing)
                     {
-                        console.log('grab');
                         this.grabbing = true;
 
                         // translate hat position/rotation from head space to hand space
@@ -201,7 +198,6 @@
                 // release
                 else if(this.grabbing)
                 {
-                    console.log('release');
                     this.grabbing = false;
 
                     // translate hat position/rotation from controller space back to head space
