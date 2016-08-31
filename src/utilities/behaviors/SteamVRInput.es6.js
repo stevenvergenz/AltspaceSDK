@@ -2,18 +2,18 @@
 
 // Returns a Promise that resovles static when a steamvr controller is found
 function getController(hand) {
-	const findGamepad = (resolve, reject) => {
-		const gamepad = altspace.getGamepads().find((g) => g.mapping === 'steamvr' && g.hand === hand);
-		if (gamepad) {
-			console.log("SteamVR input device found", gamepad);
-			resolve(gamepad);
-		} else {
-			console.log("SteamVR input device not found trying again in 500ms...");
-			setTimeout(findGamepad, 500, resolve, reject);
-		}
-	};
+    const findGamepad = (resolve, reject) => {
+        const gamepad = altspace.getGamepads().find((g) => g.mapping === 'steamvr' && g.hand === hand);
+        if (gamepad) {
+            console.log("SteamVR input device found", gamepad);
+            resolve(gamepad);
+        } else {
+            console.log("SteamVR input device not found trying again in 500ms...");
+            setTimeout(findGamepad, 500, resolve, reject);
+        }
+    };
 
-	return new Promise(findGamepad);
+    return new Promise(findGamepad);
 }
 
 /**
@@ -32,36 +32,37 @@ function getController(hand) {
  * @prop {Promise} firstControllerPromise a promise that resolves once any SteamVR input device is found
  */
 class SteamVRInputBehavior {
-	constructor() {
-		this.type = 'SteamVRInput';
-	}
+    constructor(blockTrigger) {
+        this.type = 'SteamVRInput';
+        this._blockTrigger = blockTrigger;
+    }
 
-	awake() {
-		this.leftControllerPromise = getController(SteamVRInputBehavior.LEFT_CONTROLLER);
-		this.rightControllerPromise = getController(SteamVRInputBehavior.RIGHT_CONTROLLER);
-		this.firstControllerPromise = Promise.race([
-			this.leftControllerPromise,
-			this.rightControllerPromise,
-		]);
+    awake() {
+        this.leftControllerPromise = getController(SteamVRInputBehavior.LEFT_CONTROLLER);
+        this.rightControllerPromise = getController(SteamVRInputBehavior.RIGHT_CONTROLLER);
+        this.firstControllerPromise = Promise.race([
+            this.leftControllerPromise,
+            this.rightControllerPromise,
+        ]);
 
-		this.leftControllerPromise.then((controller) => {
-			this.leftController = controller;
-		});
-		this.rightControllerPromise.then((controller) => {
-			this.rightController = controller;
-		});
-		this.firstControllerPromise.then((controller) => {
-			this.firstController = controller;
+        this.leftControllerPromise.then((controller) => {
+            this.leftController = controller;
+        });
+        this.rightControllerPromise.then((controller) => {
+            this.rightController = controller;
+        });
+        this.firstControllerPromise.then((controller) => {
+            this.firstController = controller;
 
-			const blockedAxes = controller.axes.map(() => false);
-			const blockedButtons = controller.buttons.map(() => false);
+            const blockedAxes = controller.axes.map(() => false);
+            const blockedButtons = controller.buttons.map(() => false);
 
-			blockedButtons[SteamVRInputBehavior.BUTTON_TRIGGER] = true;
-			blockedButtons[SteamVRInputBehavior.BUTTON_TOUCHPAD] = true;
+            blockedButtons[SteamVRInputBehavior.BUTTON_TRIGGER] = this._blockTrigger === false ? false : true;
+            blockedButtons[SteamVRInputBehavior.BUTTON_TOUCHPAD] = true;
 
-			controller.preventDefault(blockedAxes, blockedButtons);
-		});
-	}
+            controller.preventDefault(blockedAxes, blockedButtons);
+        });
+    }
 }
 
 SteamVRInputBehavior.BUTTON_TRIGGER = 0;

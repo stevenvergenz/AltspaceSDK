@@ -42,10 +42,11 @@ function getController(hand) {
  */
 
 var SteamVRInputBehavior = (function () {
-	function SteamVRInputBehavior() {
+	function SteamVRInputBehavior(blockTrigger) {
 		_classCallCheck(this, SteamVRInputBehavior);
 
 		this.type = 'SteamVRInput';
+		this._blockTrigger = blockTrigger;
 	}
 
 	_createClass(SteamVRInputBehavior, [{
@@ -73,7 +74,7 @@ var SteamVRInputBehavior = (function () {
 					return false;
 				});
 
-				blockedButtons[SteamVRInputBehavior.BUTTON_TRIGGER] = true;
+				blockedButtons[SteamVRInputBehavior.BUTTON_TRIGGER] = _this._blockTrigger === false ? false : true;
 				blockedButtons[SteamVRInputBehavior.BUTTON_TOUCHPAD] = true;
 
 				controller.preventDefault(blockedAxes, blockedButtons);

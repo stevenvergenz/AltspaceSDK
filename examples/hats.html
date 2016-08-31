@@ -27,6 +27,8 @@
 
             };
 
+            var SteamVRInputBehavior = altspace.utilities.behaviors.SteamVRInput;
+
             var sim;
             var sceneSync;
             var objTemplateByName = {};
@@ -101,7 +103,9 @@
                         instantiators: { 'Hat': createHat },
                         ready: onSyncReady
                     });
-                    sim.scene.addBehavior(sceneSync);
+                    // add vive wand tracking support
+                    var steamInput = new SteamVRInputBehavior(false);
+                    sim.scene.addBehaviors(sceneSync, steamInput);
                 });
             }
 
@@ -134,7 +138,7 @@
                     var offset = new THREE.Vector3();
                     offset.copy(config.models[obj.name].offset);
                     offset.multiplyScalar(scale);
-                    obj.addBehavior(FollowBehavior({ offset: offset, joint: head }));
+                    obj.addBehavior(FollowGrabBehavior({ offset: offset, joint: head }));
                 }
                 obj.addBehavior(altspace.utilities.behaviors.Object3DSync({
                     position: true, rotation: true
@@ -143,27 +147,86 @@
                 return obj;
             }
 
-            function FollowBehavior(config) {
+            function FollowGrabBehavior(config) {
 
-                var offset = config.offset;
+                var posOffset = config.offset;
+                var quatOffset = new THREE.Quaternion();
                 var joint = config.joint;
 
                 var object3d;
-                var sync;
+                var sync, input = sim.scene.getBehaviorByType('SteamVRInput');
+                var initialInputPos = null, initialInputQuat = null;
+                var inputPosOffset = null, inputQuatOffset = null;
 
                 function awake(o) {
                     object3d = o;
                     sync = object3d.getBehaviorByType('Object3DSync');
                 }
 
-                function update() {
+                function update()
+                {
+                    // check if user is grabbing something
+                    var grabHand;
+                    if( input && input.leftController && input.leftController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
+                        grabHand = input.leftController;
+                    else if( input && input.rightController && input.rightController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
+                        grabHand = input.rightController;
+                    else
+                        grabHand = null;
+
+                    // check if user is grabbing the hat
+                    var inputPos, inputQuat;
+                    var bounds = new THREE.Box3().setFromObject(object3d);
+                    if(grabHand && bounds.containsPoint( inputPos = new THREE.Vector3().copy(grabHand.position) ))
+                    {
+                        inputQuat = new THREE.Quaternion().copy(grabHand.rotation);
+
+                        // if so, check if it's a hold event or a press
+                        if(!initialInputPos && !initialInputQuat)
+                        {
+                            console.log('grab');
+                            // fresh press, initialize controller position
+                            initialInputPos = inputPos;
+                            initialInputQuat = inputQuat;
+                            inputPosOffset = new THREE.Vector3();
+                            inputQuatOffset = new THREE.Quaternion();
+                        }
+                        else
+                        {
+                            console.log('hold');
+                            // hold, update hat position/rotation with controller delta
+                            inputPosOffset = inputPosOffset.copy(inputPos).sub(initialInputPos);
+                            inputQuatOffset = inputQuatOffset.copy(initialInputQuat).multiply(inputQuat.conjugate());
+                        }
+                    }
+                    else if(initialInputPos && initialInputQuat)
+                    {
+                        console.log('release');
+                        // save position to offset
+                        posOffset.add(inputPosOffset);
+                        quatOffset.multiply(inputQuatOffset);
+
+                        // clear intermediate values
+                        initialInputPos = null;
+                        initialInputQuat = null;
+                        inputPosOffset = null;
+                        inputQuatOffset = null;
+                    }
+
                     //No need to take ownership of this hat, since we created it.
                     object3d.position.copy(joint.position);
                     object3d.rotation.copy(joint.rotation);
+
                     //Use offset to position hat on top of head.
-                    object3d.translateX(offset.x);
-                    object3d.translateY(offset.y);
-                    object3d.translateZ(offset.z);
+                    object3d.position.add(posOffset);
+                    if(inputPosOffset)
+                        object3d.position.add(inputPosOffset);
+
+                    // rotate to degree given by input
+                    object3d.quaternion.multiply(quatOffset);
+                    if(inputQuatOffset)
+                        object3d.quaternion.multiply(inputQuatOffset);
+
                 }
 
                 return { awake: awake, update: update };
