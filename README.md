@@ -289,7 +289,7 @@ FollowGrabBehavior.prototype.update = function()
 
     // apply
     this.object3d.matrix.copy(mat);
-    this.object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
+    this.object3d.matrix.decompose(this.object3d.position, this.object3d.quaternion, this.object3d.scale);
 }
 
 ```
