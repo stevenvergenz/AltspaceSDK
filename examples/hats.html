@@ -214,19 +214,27 @@
                     }
 
                     //No need to take ownership of this hat, since we created it.
-                    object3d.position.copy(joint.position);
-                    object3d.rotation.copy(joint.rotation);
 
-                    //Use offset to position hat on top of head.
-                    object3d.position.add(posOffset);
-                    if(inputPosOffset)
-                        object3d.position.add(inputPosOffset);
+                    // put it on the head, then rotate, then offset, then scale
+                    // this makes it rotate around the head joint instead of its own origin
+                    // Final = HeadTranslate x HeadRotate x HatOffset x Scale
+                    var mat = new THREE.Matrix4();
 
-                    // rotate to degree given by input
-                    object3d.quaternion.multiply(quatOffset);
-                    if(inputQuatOffset)
-                        object3d.quaternion.multiply(inputQuatOffset);
+                    // place
+                    mat.multiply(new THREE.Matrix4().makeTranslation(joint.position.x, joint.position.y, joint.position.z));
 
+                    // rotate
+                    mat.multiply(new THREE.Matrix4().makeRotationFromQuaternion(joint.quaternion));
+
+                    // offset
+                    mat.multiply(new THREE.Matrix4().makeTranslation(posOffset.x, posOffset.y, posOffset.z));
+
+                    // scale
+                    mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
+
+                    // apply
+                    object3d.matrix.copy(mat);
+                    object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
                 }
 
                 return { awake: awake, update: update };
