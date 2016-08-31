@@ -201,7 +201,7 @@ Finally, we set the hat's transform to this new matrix that we've computed, and 
 
 ```javascript
 this.object3d.matrix.copy(mat);
-this.object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
+this.object3d.matrix.decompose(this.object3d.position, this.object3d.quaternion, this.object3d.scale);
 ```
 
 And that's it! We're done! The hat will follow the user's head unless it is being repositioned with the controller.
@@ -209,9 +209,12 @@ And that's it! We're done! The hat will follow the user's head unless it is bein
 
 ### Conclusion
 
+So what did we get out of this effort? For one, we cleaned up and reorganized the `FollowGrabBehavior`, yielding more readable and more maintainable code. For another, we've added a fun new way for Vive users to express themselves in Altspace: hat angles, tipping, waving, etc. But most importantly for us as developers, we've learned how to use the SteamVR input functionality provided by Altspace, which has a lot of interesting applications across the VR space.
+
+I hope you've had fun following along with this guide to the AltspaceVR SDK! Come back next week, when I'll demonstrate how to add Leap Motion support!
 
 
-## Appendix A: Full Source Code
+## Appendix A: Full Behavior Source Code
 
 ```javascript
 function FollowGrabBehavior(config)
