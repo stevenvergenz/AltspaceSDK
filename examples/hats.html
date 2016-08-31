@@ -138,7 +138,7 @@
                     var offset = new THREE.Vector3();
                     offset.copy(config.models[obj.name].offset);
                     offset.multiplyScalar(scale);
-                    obj.addBehavior(FollowGrabBehavior({ offset: offset, joint: head }));
+                    obj.addBehavior(new FollowGrabBehavior({ offset: offset, joint: head }));
                 }
                 obj.addBehavior(altspace.utilities.behaviors.Object3DSync({
                     position: true, rotation: true
@@ -147,98 +147,86 @@
                 return obj;
             }
 
-            function FollowGrabBehavior(config) {
+            function FollowGrabBehavior(config)
+            {
+                this.offsetMat = new THREE.Matrix4().setPosition(config.offset);
+                this.joint = config.joint;
+                this.grabbing = false;
+                this.inputMat = new THREE.Matrix4();
 
-                var posOffset = config.offset;
-                var quatOffset = new THREE.Quaternion();
-                var joint = config.joint;
+                this.object3d;
+                this.sync = null;
+                this.input = sim.scene.getBehaviorByType('SteamVRInput');
+            }
 
-                var object3d;
-                var sync, input = sim.scene.getBehaviorByType('SteamVRInput');
-                var initialInputPos = null, initialInputQuat = null;
-                var inputPosOffset = null, inputQuatOffset = null;
+            FollowGrabBehavior.prototype.awake = function(o)
+            {
+                this.object3d = o;
+                this.sync = object3d.getBehaviorByType('Object3DSync');
+            }
 
-                function awake(o) {
-                    object3d = o;
-                    sync = object3d.getBehaviorByType('Object3DSync');
-                }
+            FollowGrabBehavior.prototype.update = function()
+            {
+                // check if user is grabbing something
+                var grabHand;
+                if( this.input && this.input.leftController && this.input.leftController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
+                    grabHand = this.input.leftController;
+                else if( this.input && this.input.rightController && this.input.rightController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
+                    grabHand = input.rightController;
+                else
+                    grabHand = null;
 
-                function update()
+                // check if user is grabbing the hat
+                var inputPos, inputQuat;
+                var bounds = new THREE.Box3().setFromObject(this.object3d);
+                if(grabHand && bounds.containsPoint( inputPos = new THREE.Vector3().copy(grabHand.position) ))
                 {
-                    // check if user is grabbing something
-                    var grabHand;
-                    if( input && input.leftController && input.leftController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
-                        grabHand = input.leftController;
-                    else if( input && input.rightController && input.rightController.buttons[SteamVRInputBehavior.BUTTON_GRIP].pressed )
-                        grabHand = input.rightController;
-                    else
-                        grabHand = null;
+                    inputQuat = new THREE.Quaternion().copy(grabHand.rotation);
 
-                    // check if user is grabbing the hat
-                    var inputPos, inputQuat;
-                    var bounds = new THREE.Box3().setFromObject(object3d);
-                    if(grabHand && bounds.containsPoint( inputPos = new THREE.Vector3().copy(grabHand.position) ))
+                    // update controller position
+                    this.inputMat.compose(inputPos, inputQuat, new THREE.Vector3(1,1,1));
+
+                    // grab
+                    if(!this.grabbing)
                     {
-                        inputQuat = new THREE.Quaternion().copy(grabHand.rotation);
+                        console.log('grab');
+                        this.grabbing = true;
 
-                        // if so, check if it's a hold event or a press
-                        if(!initialInputPos && !initialInputQuat)
-                        {
-                            console.log('grab');
-                            // fresh press, initialize controller position
-                            initialInputPos = inputPos;
-                            initialInputQuat = inputQuat;
-                            inputPosOffset = new THREE.Vector3();
-                            inputQuatOffset = new THREE.Quaternion();
-                        }
-                        else
-                        {
-                            console.log('hold');
-                            // hold, update hat position/rotation with controller delta
-                            inputPosOffset = inputPosOffset.copy(inputPos).sub(initialInputPos);
-                            inputQuatOffset = inputQuatOffset.copy(initialInputQuat).multiply(inputQuat.conjugate());
-                        }
+                        // translate hat position/rotation from head space to hand space
+                        var handInverse = new THREE.Matrix4().getInverse(this.inputMat);
+                        this.offsetMat.multiply(this.joint.matrix).multiply(handInverse);
                     }
-                    else if(initialInputPos && initialInputQuat)
-                    {
-                        console.log('release');
-                        // save position to offset
-                        posOffset.add(inputPosOffset);
-                        quatOffset.multiply(inputQuatOffset);
-
-                        // clear intermediate values
-                        initialInputPos = null;
-                        initialInputQuat = null;
-                        inputPosOffset = null;
-                        inputQuatOffset = null;
-                    }
-
-                    //No need to take ownership of this hat, since we created it.
-
-                    // put it on the head, then rotate, then offset, then scale
-                    // this makes it rotate around the head joint instead of its own origin
-                    // Final = HeadTranslate x HeadRotate x HatOffset x Scale
-                    var mat = new THREE.Matrix4();
-
-                    // place
-                    mat.multiply(new THREE.Matrix4().makeTranslation(joint.position.x, joint.position.y, joint.position.z));
-
-                    // rotate
-                    mat.multiply(new THREE.Matrix4().makeRotationFromQuaternion(joint.quaternion));
-
-                    // offset
-                    mat.multiply(new THREE.Matrix4().makeTranslation(posOffset.x, posOffset.y, posOffset.z));
-
-                    // scale
-                    mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
-
-                    // apply
-                    object3d.matrix.copy(mat);
-                    object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
                 }
 
-                return { awake: awake, update: update };
+                // release
+                else if(this.grabbing)
+                {
+                    console.log('release');
+                    this.grabbing = false;
 
+                    // translate hat position/rotation from controller space back to head space
+                    var headInverse = new THREE.Matrix4().getInverse(this.joint.matrix);
+                    this.offsetMat.multiply(this.inputMat).multiply(headInverse);
+                }
+
+
+                //No need to take ownership of this hat, since we created it.
+
+                // position hat relative to head, or hand if grabbing
+                if(this.grabbing)
+                    var mat = this.inputMat.clone();
+                else
+                    var mat = this.joint.matrix.clone();
+
+                // offset
+                mat.multiply(this.offsetMat);
+                
+                // scale
+                mat.multiply(new THREE.Matrix4().makeScale(scale, scale, scale));
+
+                // apply
+                this.object3d.matrix.copy(mat);
+                this.object3d.matrix.decompose(object3d.position, object3d.quaternion, object3d.scale);
             }
 
             return { main: main };
