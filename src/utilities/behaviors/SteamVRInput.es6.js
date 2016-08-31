@@ -21,6 +21,7 @@ function getController(hand) {
  * to the ThreeJS scene and is required to use [SteamVRTrackedObject]{@link module:altspace/utilities/behaviors.SteamVRTrackedObject}
  *
  * @class SteamVRInput
+ * @param {Boolean} [blockTrigger=true] If false, main controller will not trigger cursor events.
  * @memberof module:altspace/utilities/behaviors
  *
  * @prop {Gamepad} leftController the left SteamVR [Gamepad]{@link module:altspace~Gamepad} or undefined if one has not yet been found
