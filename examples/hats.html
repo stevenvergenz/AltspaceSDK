@@ -188,7 +188,7 @@
                     if(!this.grabbing && bounds.containsPoint(inputPos))
                     {
                         this.grabbing = true;
-console.log('grab', this.joint);
+
                         // translate hat position/rotation from head space to hand space
                         this.joint.updateMatrixWorld();
                         var handInverse = new THREE.Matrix4().getInverse(this.inputMat);
@@ -200,7 +200,7 @@ console.log('grab', this.joint);
                 else if(this.grabbing)
                 {
                     this.grabbing = false;
-console.log('release');
+
                     // translate hat position/rotation from controller space back to head space
                     this.joint.updateMatrixWorld();
                     var headInverse = new THREE.Matrix4().getInverse(this.joint.matrixWorld);
